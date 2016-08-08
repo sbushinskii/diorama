@@ -1,0 +1,7 @@
+<?php
+
+function custom_product_feeds_presave(FeedsSource $source, $entity, $item) {
+	$entity->sell_price = $item['sell price'];
+	$entity->model = $item['sku'];
+//	var_dump($entity, $item);die;
+}

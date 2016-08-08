@@ -1,0 +1,4 @@
+name = Custom product import 
+description = Enables support for import product.
+package = Other
+core = 7.x
