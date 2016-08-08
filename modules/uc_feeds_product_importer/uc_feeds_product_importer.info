@@ -1,0 +1,5 @@
+name = "Ubercart Feeds Product Importer"
+description = "A feeds importer that can import most Ubercart fields, including attributes, via a CSV file."
+package = "Feeds"
+dependencies[] = "uc_feeds"
+core = "7.x"

@@ -1,0 +1,217 @@
+<?php
+
+/**
+* Implementation of hook_ctools_plugin_api().
+*/
+function uc_feeds_product_updater_ctools_plugin_api() {
+  list($module, $api) = func_get_args();
+  if ($module == "feeds" && $api == "feeds_importer_default") {
+    return array("version" => 1);
+  }
+}
+
+/**
+* Implementation of hook_feeds_importer_default().
+*/
+function uc_feeds_product_updater_feeds_importer_default() {
+  $export = array();
+  $feeds_importer = new stdClass();
+  $feeds_importer->disabled = FALSE; 
+  $feeds_importer->api_version = 1;
+  $feeds_importer->id = 'uc_feeds_product_updater';
+  $feeds_importer->config = array(
+    'name' => 'Ubercart Feeds Product Updater',
+    'description' => 'Update Ubercart products from csv. Attempts to update all fields (including attributes) automatically.',
+    'fetcher' => array(
+      'plugin_key' => 'FeedsFileFetcher',
+      'config' => array(
+        'allowed_extensions' => 'txt csv tsv xml opml',
+        'direct' => FALSE,
+      ),
+    ),
+    'parser' => array(
+      'plugin_key' => 'FeedsCSVParser',
+      'config' => array(
+        'delimiter' => ',',
+        'no_headers' => 0,
+      ),
+    ),
+    'processor' => array(
+      'plugin_key' => 'FeedsNodeProcessor',
+      'config' => array(
+        'content_type' => 'product',
+        'expire' => '-1',
+        'author' => '1',
+        'mappings' => array(
+          0 => array(
+            'source' => 'Product Name',
+            'target' => 'title',
+            'unique' => FALSE,
+          ),
+        ),
+        'update_existing' => '2',
+        'input_format' => 'full_html',
+      ),
+    ),
+    'content_type' => '',
+    'update' => 0,
+    'import_period' => '-1',
+    'expire_period' => 3600,
+    'import_on_create' => 1,
+    'process_in_background' => 0,
+  );
+
+  // Add standard fields
+  $fields = field_info_instances('node', 'product');
+  foreach($fields as $field) {
+    $feeds_importer->config['processor']['config']['mappings'][] = array(
+      'source' => $field['label'],
+      'target' => $field['field_name'],
+      'unique' => FALSE,
+    );
+  }
+
+  // Add 'extra' fields
+  $extra_fields = field_info_extra_fields('node', 'product', 'display');
+  // remove fields we cannot import
+  unset($extra_fields['display_price']);
+  unset($extra_fields['add_to_cart']);
+  foreach($extra_fields as $key => $extra) {
+    $feeds_importer->config['processor']['config']['mappings'][] = array(
+      'source' => $extra['label'],
+      'target' => $key,
+      'unique' => FALSE,
+    );
+  }
+
+  // Add Attribute fields
+  if (module_exists("uc_attribute")) {
+    $attribute_fields = array('price', 'cost', 'weight');
+    $attributes = uc_attribute_load_multiple();
+    ksort($attributes);
+
+    foreach ($attribute_fields as $attribute_field) {
+      foreach($attributes as $aid => $attribute) {
+        $options = $attribute->options;
+        ksort($options);
+
+        foreach($options as $oid => $option) {
+          $a = preg_replace("/[^A-Za-z0-9]/",'', $attribute->name);
+          $o = preg_replace("/[^A-Za-z0-9]/",'', $option->name);
+
+          $feeds_importer->config['processor']['config']['mappings'][] = array(
+            'source' => "$a-$o-" . ucfirst($attribute_field),
+            'target' => 'attribute_' . $attribute_field . '_' . $aid . '_' .$oid,
+            'unique' => FALSE,
+          );
+        }
+      }
+    }
+  }
+
+  $export['node'] = $feeds_importer;
+  return $export;
+}
+
+
+/**
+* Implements hook_node_update().
+*/
+function uc_feeds_node_update($node) {
+
+  if (uc_product_is_product($node) && module_exists("uc_attribute")) {
+  
+    foreach ($node->attributes as $aid => $feedattrib) {
+      // Load all options for added attributes. (Will only enable the ones set in the import)
+      $attribute = uc_attribute_load($aid);
+
+      foreach ($attribute->options as $option) {
+        // some part of the option is set, default all empty parts to 0 or ''
+        if (isset($node->attributes[$aid]->options[$option->oid])) {
+          $option->price = ($node->attributes[$aid]->options[$option->oid]->price != '') ? $node->attributes[$aid]->options[$option->oid]->price : 0;
+          $option->cost = ($node->attributes[$aid]->options[$option->oid]->cost != '') ? $node->attributes[$aid]->options[$option->oid]->cost : 0;
+          $option->weight = ($node->attributes[$aid]->options[$option->oid]->weight != '') ? $node->attributes[$aid]->options[$option->oid]->weight : 0;
+
+          //check if node has option 
+          $pres_opt = db_select('uc_product_options', 'c')
+          ->fields('c')
+          ->condition('oid',$option->oid)
+          ->condition('nid',$node->nid)
+          ->execute()
+          ->fetchAssoc();
+          
+          if ((isset($pres_opt['nid'])) && ($pres_opt['nid']==$node->nid)){  	      
+            $id = db_update('uc_product_options')->fields(array(
+              'cost' => $option->cost,
+              'price' => $option->price,
+              'weight' => $option->weight,
+              'ordering' => $option->ordering,
+              ))
+            ->condition('nid', $node->nid)
+            ->condition('oid', $option->oid)
+            ->execute();
+          } else {    
+            $id = db_insert('uc_product_options')->fields(array(
+              'nid' => $node->nid,
+              'oid' => $option->oid,
+              'cost' => $option->cost,
+              'price' => $option->price,
+              'weight' => $option->weight,
+              'ordering' => $option->ordering,
+            ))
+            ->execute();
+          }
+        }
+      }
+
+      // Make the first option (if any) the default.
+      $option = reset($attribute->options);
+      if ($option) {
+        $oid = $option->oid;
+      } else {
+        $oid = 0;
+      } 
+
+      //Load generic uc attribute
+      $res = db_select('uc_attributes', 'c')
+      ->fields('c')
+      ->condition('aid',$aid)
+      ->execute()
+      ->fetchAssoc();
+
+      //check if node has attribute
+      $pres = db_select('uc_product_attributes', 'c')
+      ->fields('c')
+      ->condition('aid',$aid)
+      ->condition('nid',$node->nid)
+      ->execute()
+      ->fetchAssoc();
+
+      if ((isset($pres['nid'])) && ($pres['nid']==$node->nid)){
+        $nid = db_update('uc_product_attributes')
+        ->fields(array(
+          'label' => $res['label'],
+          'ordering' => $res['ordering'],
+          'default_option' => $oid,
+          'required' => $res['required'],
+          'display' => $res['display'],
+        ))
+        ->condition('nid', $node->nid)
+        ->condition('aid', $res['aid'])
+        ->execute();
+      } else {
+        $nid = db_insert('uc_product_attributes') 
+        ->fields(array(
+          'nid' => $node->nid,
+          'aid' => $res['aid'],
+          'label' => $res['label'],
+          'ordering' => $res['ordering'],
+          'default_option' => $oid,
+          'required' => $res['required'],
+          'display' => $res['display'],
+        ))
+        ->execute();      
+      } 
+    }
+  }
+}
