@@ -12,8 +12,42 @@ function custom_product_feeds_presave(FeedsSource $source, $entity, $item) {
     $entity->dim_height = $item['height'];
     $entity->title = $item['name'];
     $entity->description = $item['description'];
+    $entity->promote = 0;
 
-    test_category_exists($item['category_name']);
+
+    if (substr_count($entity->title, 'imported')) {
+        $entity->status = 0;
+        $entity->ordering = -25;
+    }
+
+    if (trim($item['category_name'])) {
+        $category_name = str_replace(array('-'), '', $item['category_name']);
+        test_category_exists($category_name);
+    }
+    if (trim($item['image'])) {
+        _import_image($item['image'], $entity);
+        //var_dump($entity);die;
+    }
+
+}
+
+function _import_image($image_path, &$entity) {
+    $pub_dir = 'public://products/';
+    $file_name = basename($image_path);
+
+    $uri = 'public://' . $image_path;
+    $filepath = drupal_realpath($uri);
+    $fhandle = fopen($filepath, 'r');
+    $data = fread($fhandle, filesize($uri));
+    fclose($fhandle);
+    //var_dump($data);die;
+    $file = file_save_data($data, $pub_dir . $file_name, TRUE);
+    $entity->uc_product_image['und'][]['fid'] = $file->fid;
+//    }
+}
+
+function custom_product_node_update($node) {
+
 }
 
 function test_category_exists($category_name) {

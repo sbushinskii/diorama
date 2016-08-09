@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the Import Settings feature.
+ */
+
+include_once 'import_settings.features.inc';
