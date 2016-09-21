@@ -1,0 +1,140 @@
+<?php
+
+/**
+ * Although most core test cases are based on DrupalWebTestCase and are
+ * functional tests (exercising the web UI) we also have DrupalUnitTestCase,
+ * which executes much faster because a Drupal install does not have to be
+ * one. No environment is provided to a test case based on DrupalUnitTestCase;
+ * it must be entirely self-contained.
+ *
+ * @see DrupalUnitTestCase
+ *
+ * @ingroup simpletest_example
+ */
+class SimpleTestUnitTestExampleTestCase extends DrupalUnitTestCase {
+
+  /**
+   * {@inheritdoc}
+   */
+  public static function getInfo() {
+    return array(
+      'name' => 'SimpleTest Example unit tests!!!',
+      'description' => 'Test that simpletest_example_empty_mysql_date works properly.',
+      'group' => 'Examples',
+    );
+  }
+
+  /**
+   * Set up the test environment.
+   *
+   * Note that we use drupal_load() instead of passing our module dependency
+   * to parent::setUp(). That's because we're using DrupalUnitTestCase, and
+   * thus we don't want to install the module, only load it's code.
+   *
+   * Also, DrupalUnitTestCase can't actually install modules. This is by
+   * design.
+   */
+  public function setUp() {
+    drupal_load('module', 'simpletest_example');
+    parent::setUp();
+  }
+
+  /**
+   * Test simpletest_example_empty_mysql_date().
+   *
+   * Note that no environment is provided; we're just testing the correct
+   * behavior of a function when passed specific arguments.
+   */
+  public function testSimpleTestUnitTestExampleFunction() {
+    $result = simpletest_example_empty_mysql_date(NULL);
+    // Note that test assertion messages should never be translated, so
+    // this string is not wrapped in t().
+    $message = 'A NULL value should return TRUE.';
+    $this->assertTrue($result, $message);
+
+    $result = simpletest_example_empty_mysql_date('');
+    $message = 'An empty string should return TRUE.';
+    $this->assertTrue($result, $message);
+
+    $result = simpletest_example_empty_mysql_date('0000-00-00');
+    $message = 'An "empty" MySQL DATE should return TRUE.';
+    $this->assertTrue($result, $message);
+
+    $result = simpletest_example_empty_mysql_date(date('Y-m-d'));
+    $message = 'A valid date should return FALSE.';
+    $this->assertFalse($result, $message);
+  }
+}
+
+/**
+ * SimpleTestExampleMockModuleTestCase allows us to demonstrate how you can
+ * use a mock module to aid in functional testing in Drupal.
+ *
+ * If you have some functionality that's not intrinsic to the code under test,
+ * you can add a special mock module that only gets installed during test
+ * time. This allows you to implement APIs created by your module, or otherwise
+ * exercise the code in question.
+ *
+ * This test case class is very similar to SimpleTestExampleTestCase. The main
+ * difference is that we enable the simpletest_example_test module in the
+ * setUp() method. Then we can test for behaviors provided by that module.
+ *
+ * @see SimpleTestExampleTestCase
+ *
+ * @ingroup simpletest_example
+ */
+class SimpleTestExampleMockModuleTestCase extends DrupalWebTestCase {
+
+  /**
+   * Give display information to the SimpleTest system.
+   *
+   * getInfo() returns a keyed array of information for SimpleTest to show.
+   *
+   * It's a good idea to organize your tests consistently using the 'group'
+   * key.
+   */
+  public static function getInfo() {
+    return array(
+      'name' => 'SimpleTest Mock Module Example',
+      'description' => "Ensure that we can modify SimpleTest Example's content types.",
+      'group' => 'Examples',
+    );
+  }
+
+  /**
+   * Set up the test environment.
+   *
+   * Note that we're enabling both the simpletest_example and
+   * simpletest_example_test modules.
+   */
+  public function setUp() {
+    // We call parent::setUp() with the list of modules we want to enable.
+    parent::setUp('simpletest_example', 'simpletest_example_test');
+  }
+
+  /**
+   * Test modifications made by our mock module.
+   *
+   * We create a simpletest_example node and then see if our submodule
+   * operated on it.
+   */
+  public function testSimpleTestExampleMockModule() {
+    // Create a user.
+    $test_user = $this->drupalCreateUser(array('access content'));
+    // Log them in.
+    $this->drupalLogin($test_user);
+    // Set up some content.
+    $settings = array(
+      'type' => 'simpletest_example',
+      'title' => $this->randomName(32),
+      'body' => array(LANGUAGE_NONE => array(array($this->randomName(64)))),
+    );
+    // Create the content node.
+    $node = $this->drupalCreateNode($settings);
+    // View the node.
+    $this->drupalGet("node/{$node->nid}");
+    // Check that our module did it's thing.
+    $this->assertText(t('The test module did its thing.'), "Found evidence of test module.");
+  }
+
+}

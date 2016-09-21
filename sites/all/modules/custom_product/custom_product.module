@@ -1,10 +1,17 @@
 <?php
 
+function custom_product_node_update($node) {
+    var_dump($node);die;
+    if (empty($node->attributes )){
+        return false;
+    }
+}
+
 function custom_product_feeds_presave(FeedsSource $source, $entity, $item) {
 
-    $entity->sell_price = $item['price'];
+    $entity->sell_price = ($item['default_price']) ? $item['default_price'] : 0;
     $entity->list_price = $item['my_purchase_price'];
-    $entity->cost = ($item['default_price']) ? $item['default_price'] : 0;
+    $entity->cost = $item['price'];;
     $entity->model = $item['sku'];
     $entity->weight = $item['weight'];
     $entity->dim_length = $item['length'];
@@ -14,7 +21,6 @@ function custom_product_feeds_presave(FeedsSource $source, $entity, $item) {
     $entity->description = $item['description'];
     $entity->promote = 0;
 
-
     if (substr_count($entity->title, 'imported')) {
         $entity->status = 0;
         $entity->ordering = -25;
@@ -22,12 +28,13 @@ function custom_product_feeds_presave(FeedsSource $source, $entity, $item) {
 
     if (trim($item['category_name'])) {
         $category_name = str_replace(array('-'), '', $item['category_name']);
-        test_category_exists($category_name);
+        $category_id = test_category_exists($category_name);
+        $entity->taxonomy_catalog['und'][0]['tid'] = $category_id;
     }
     if (trim($item['image'])) {
         _import_image($item['image'], $entity);
-        //var_dump($entity);die;
     }
+    //print_r($entity);die;
 
 }
 
@@ -37,17 +44,13 @@ function _import_image($image_path, &$entity) {
 
     $uri = 'public://' . $image_path;
     $filepath = drupal_realpath($uri);
+
     $fhandle = fopen($filepath, 'r');
     $data = fread($fhandle, filesize($uri));
     fclose($fhandle);
     //var_dump($data);die;
     $file = file_save_data($data, $pub_dir . $file_name, TRUE);
-    $entity->uc_product_image['und'][]['fid'] = $file->fid;
-//    }
-}
-
-function custom_product_node_update($node) {
-
+    $entity->uc_product_image['und'][0] = get_object_vars($file);
 }
 
 function test_category_exists($category_name) {
